@@ -25,5 +25,6 @@ target_include_directories(imgui PUBLIC
     ${IMGUI_DIR}/backends
 )
 
-# ---- Demo ----
+# ---- Demos ----
 add_subdirectory(my_demo)
+add_subdirectory(embed_demo)

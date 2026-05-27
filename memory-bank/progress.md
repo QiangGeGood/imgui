@@ -30,6 +30,12 @@
   - `my_demo/CMakeLists.txt` 通过 `${CMAKE_SOURCE_DIR}/...` 直接编入框架 .cpp（未抽静态库）
   - 根目录已在 imgui PUBLIC include 路径，include 写法无需路径前缀
   - Release 构建通过
+- ImGuiDx11App 升级为可后台运行（embed mode），便于嵌入已有消息循环：
+  - 新增 `Start()` / `Stop()` / `IsRunning()` / `Post()`；HWND + D3D + ImGui 上下文均在 UI 线程内创建
+  - `AddWindow()` 改为线程安全（mutex 保护 weak_ptr 容器）；`pending_tasks_` 同上
+  - `Stop()` 通过 `atomic<void*> hwnd_for_stop_` 跨线程 `PostMessage(WM_CLOSE)`，析构自动 Stop+join
+  - 旧 `Run(callback)` 保留为兼容入口（= Start + 把回调包成 CallbackWindow 走 weak_ptr 路径 + join）
+  - 新增 `embed_demo/`（控制台循环 + atomic 共享状态 + 仅 3 行接入 UI），Release 构建通过
 
 ## 运行
 - 双击 exe 或 `build\my_demo\Release\my_demo.exe`
