@@ -66,6 +66,24 @@ public:
 
     void SetClearColor(float r, float g, float b, float a);
 
+    // --- Frame-rate / CPU throttling ---------------------------------------
+    // 0 means uncapped (legacy behaviour). When > 0 the UI thread sleeps so
+    // that no more than this many frames per second are produced while the
+    // window is actively used.
+    void SetTargetFps(int fps);
+
+    // FPS used after `idle_timeout_ms` of no input. 0 means "do not render
+    // at all while idle, wait for the next message". Default: 10.
+    void SetIdleFps(int fps);
+
+    // Time of inactivity (no input messages) after which the loop drops to
+    // `idle_fps`. Default: 500 ms.
+    void SetIdleTimeoutMs(int ms);
+
+    // VSync on swap-chain Present. When off, frame rate is controlled solely
+    // by SetTargetFps/SetIdleFps. Default: on.
+    void SetVSync(bool on);
+
 private:
     void UiThreadMain();
     void CreateDeviceAndSwapChain();
@@ -86,6 +104,13 @@ private:
     IDXGISwapChain*              swap_chain_ = nullptr;
     ID3D11RenderTargetView*      rtv_        = nullptr;
     float                        clear_color_[4] = { 0.10f, 0.12f, 0.18f, 1.0f };
+
+    // Frame-rate / throttling configuration (read on UI thread; written
+    // from owning thread before Start(), so no synchronisation needed).
+    std::atomic<int>  target_fps_{ 60 };
+    std::atomic<int>  idle_fps_{ 10 };
+    std::atomic<int>  idle_timeout_ms_{ 500 };
+    std::atomic<bool> vsync_{ true };
 
     // Thread plumbing.
     std::thread          ui_thread_;

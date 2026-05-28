@@ -78,6 +78,30 @@ LRESULT CALLBACK Win32Window::StaticWndProc(HWND h, UINT m, WPARAM w, LPARAM l)
 
 LRESULT Win32Window::HandleMessage(HWND h, UINT m, WPARAM w, LPARAM l)
 {
+    // Refresh "last input" timestamp for any message that should wake the
+    // UI loop out of its idle (low-FPS) state.
+    switch (m)
+    {
+    case WM_MOUSEMOVE:
+    case WM_NCMOUSEMOVE:
+    case WM_LBUTTONDOWN: case WM_LBUTTONUP: case WM_LBUTTONDBLCLK:
+    case WM_RBUTTONDOWN: case WM_RBUTTONUP: case WM_RBUTTONDBLCLK:
+    case WM_MBUTTONDOWN: case WM_MBUTTONUP: case WM_MBUTTONDBLCLK:
+    case WM_XBUTTONDOWN: case WM_XBUTTONUP: case WM_XBUTTONDBLCLK:
+    case WM_MOUSEWHEEL:  case WM_MOUSEHWHEEL:
+    case WM_KEYDOWN:     case WM_KEYUP:
+    case WM_SYSKEYDOWN:  case WM_SYSKEYUP:
+    case WM_CHAR:
+    case WM_SETFOCUS:    case WM_KILLFOCUS:
+    case WM_ACTIVATE:    case WM_ACTIVATEAPP:
+    case WM_SIZE:        case WM_MOVE:
+    case WM_PAINT:       case WM_DISPLAYCHANGE:
+        last_input_time_ = Clock::now();
+        break;
+    default:
+        break;
+    }
+
     if (ImGui_ImplWin32_WndProcHandler(h, m, w, l))
         return true;
 

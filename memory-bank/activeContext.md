@@ -58,5 +58,48 @@
   ```
   通过 `std::atomic` 共享状态，UI 线程实时绘制
 
+## 帧率控制 / CPU 节流（新增）
+
+### 问题
+原主循环 `while(PumpMessages()) DrawFrame()` 是忙轮询，即使 VSync 限制 GPU 帧率，CPU 端 ImGui draw-list 仍每帧执行（~60 FPS），空闲时 CPU 占用高。
+
+### 方案（已实现：消息驱动 + 空闲降帧 + VSync 开关）
+- `Win32Window` 增加 `LastInputTime()`（记录最近输入消息时间戳）和 `IsMinimized()`
+- `ImGuiDx11App` 新增 4 个配置接口：
+  - `SetTargetFps(int)` — 活跃时帧率上限（默认 60；0 = 不限）
+  - `SetIdleFps(int)` — 空闲时帧率（默认 10；0 = 仅消息驱动不渲染）
+  - `SetIdleTimeoutMs(int)` — 多久无输入视为空闲（默认 500ms）
+  - `SetVSync(bool)` — Present VSync 开关（默认 on）
+- 主循环改用 `MsgWaitForMultipleObjectsEx`：等待"下一帧 deadline"或"窗口消息"或 `Post()` 发来的 `WM_NULL`， whichever comes first
+- 最小化 → 一律 `wait_ms = INFINITE`，完全跳过渲染
+- 空闲且 `idle_fps == 0` → 同样 `INFINITE` 等待消息
+- `Present(vsync ? 1 : 0, 0)` 根据 VSync 标志切换
+- `Post()` 里有新任务时 `PostMessage(WM_NULL)` 唤醒 UI 线程
+
+### UiThreadMain 结构（三段式）
+1. **Init**：HWND → D3D11 设备/SwapChain/RTV → ImGui 上下文
+2. **Run loop**：每次迭代 4 个子步骤
+   - 2a 处理 resize
+   - 2b 判定 `minimized` / `idle` / `effective_fps`
+   - 2c 渲染一帧（除非 `minimized` 或 `effective_fps == 0`）
+   - 2d `ComputeWaitMs()` + `MsgWaitForMultipleObjectsEx`：按本帧实际耗时计算等待（不再累加全局 `next_frame_time`）
+3. **Shutdown**：反向销毁；`try/catch` 保证 `running_` 必被清除
+
+### ComputeWaitMs（匿名命名空间小函数，2 参数）
+- `fps <= 0` → `kWaitForever`（纯消息驱动）
+- 帧预算有剩余 → 返回剩余毫秒
+- 帧预算耗尽 → `kWaitNoSleep`（立即下一轮）
+- 统一语义：`fps == 0` 在 active 和 idle 状态下都意味着"消息驱动，不周期渲染"
+- `minimized` 参数已移除：最小化由主循环 2b 步 `continue` 早退处理，不再进入 ComputeWaitMs
+
+### 主循环优化要点
+- **2b 最小化早退**：`IsMinimized()` 时直接 `MsgWaitForMultipleObjectsEx(INFINITE)` + `continue`，跳过后续所有状态计算和渲染
+- **2c 单次 `Clock::now()`**：`frame_start` 同时用于 idle 判定和帧耗时计算，减少 `QueryPerformanceCounter` 调用
+
+### 效果预期
+- 空闲（无操作 500ms 后）：~10 FPS → CPU 接近 0%
+- 活跃交互：与原来体验一致（60 FPS）
+- 最小化：完全不渲染，CPU = 0%；恢复后立即按 `target_fps` 渲染
+
 ## 下一步
 - 如需要：扩展示例 UI、添加更多窗口/资源
